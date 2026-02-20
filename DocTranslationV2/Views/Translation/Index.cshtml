@@ -1,0 +1,1189 @@
+@{
+    ViewData["Title"] = "Document Translation";
+    var languages = ViewBag.SupportedLanguages as List<DocTranslationV2.Models.SupportedLanguage> ?? new();
+}
+
+<div class="container mt-4">
+    <h1 class="mb-4">Azure Document Translation Service</h1>
+
+    <div class="card">
+        <div class="card-body">
+            <form id="translationForm" enctype="multipart/form-data">
+                <!-- File Upload Section -->
+                <div class="mb-4">
+                    <label class="form-label fw-bold">Select Documents</label>
+                    <input type="file" class="form-control" id="fileInput" name="files" multiple required>
+                    <div class="form-text">
+                        Supported formats: PDF, DOCX, PPTX, XLSX, TXT, HTML, RTF, ODT, ODS, ODP
+                        <br>Multiple files are only supported with async processing.
+                    </div>
+                    <div id="fileList" class="mt-2"></div>
+                </div>
+
+                <!-- Language Selection -->
+                <div class="row mb-4">
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold">Source Language</label>
+                        <div class="form-check mb-2">
+                            <input class="form-check-input" type="checkbox" id="autoDetect" name="autoDetectLanguage" checked>
+                            <label class="form-check-label" for="autoDetect">
+                                Auto-detect language
+                            </label>
+                        </div>
+                        <select class="form-select" id="sourceLanguage" name="sourceLanguage" disabled>
+                            <option value="">Select source language</option>
+                            @foreach (var lang in languages)
+                            {
+                                <option value="@lang.Code">@lang.Name (@lang.NativeName)</option>
+                            }
+                        </select>
+                    </div>
+
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold">Target Languages <span class="text-danger">*</span></label>
+                        <div id="targetLanguages" style="max-height: 250px; overflow-y: auto; border: 1px solid #dee2e6; padding: 10px; border-radius: 4px;">
+                            @foreach (var lang in languages)
+                            {
+                                <div class="form-check">
+                                    <input class="form-check-input target-lang" type="checkbox" value="@lang.Code" id="target_@lang.Code">
+                                    <label class="form-check-label" for="target_@lang.Code">
+                                        @lang.Name (@lang.NativeName)
+                                    </label>
+                                </div>
+                            }
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Processing Mode -->
+                <div class="mb-4">
+                    <label class="form-label fw-bold">Processing Mode</label>
+                    <div class="form-check">
+                        <input class="form-check-input" type="radio" name="processingMode" id="asyncMode" value="async" checked>
+                        <label class="form-check-label" for="asyncMode">
+                            <strong>Async Processing</strong> - Suitable for large files and bulk translations
+                        </label>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="radio" name="processingMode" id="syncMode" value="sync">
+                        <label class="form-check-label" for="syncMode">
+                            <strong>Sync Processing</strong> - Single file only, immediate results
+                        </label>
+                    </div>
+                    <div class="form-text">
+                        Note: Bulk files and long-running translations require async processing
+                    </div>
+                </div>
+
+                <!-- Image Processing Option -->
+                <div class="mb-4" id="imageProcessingSection">
+                    <label class="form-label fw-bold">Image Processing</label>
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="processImages" name="processImages">
+                        <label class="form-check-label" for="processImages">
+                            <strong>Process Images in Documents</strong> - Extract and translate images from Word, PDF, and PowerPoint documents
+                        </label>
+                    </div>
+                    <div class="form-text" id="imageProcessingHelp">
+                        When enabled: Images will be extracted, translated separately, and replaced in final documents<br>
+                        When disabled: Documents will be translated but images will remain in original language<br>
+                        <span class="text-muted">Applies to: .docx, .pdf, and .pptx files (async mode only)</span>
+                    </div>
+                    <div id="imageProcessingWarning" class="alert alert-warning mt-2" style="display: none;">
+                        <i class="bi bi-exclamation-triangle"></i> Image processing is only available in async mode
+                    </div>
+                    
+                    <!-- Image Filtering Options (shown only when image processing is enabled) -->
+                    <div id="imageFilteringOptions" class="mt-3 ms-4 p-3 border rounded bg-light" style="display: none;">
+                        <label class="form-label fw-bold"><small>Image Filtering Options</small></label>
+                        <div class="form-text mb-2">
+                            <small>Control which images should be excluded from translation processing</small>
+                        </div>
+                        
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="filterImagesWithContainedText" 
+                                   name="filterImagesWithContainedText" checked>
+                            <label class="form-check-label" for="filterImagesWithContainedText">
+                                <small><strong>Filter images with text overlays</strong></small>
+                            </label>
+                            <div class="form-text ms-4">
+                                <small>Skip images that have text rendered within their boundaries (e.g., chapter titles, styled headings). 
+                                These will be translated as part of the document text.</small>
+                            </div>
+                        </div>
+                        
+                        <div class="form-check mt-2">
+                            <input class="form-check-input" type="checkbox" id="filterDecorativeImages" 
+                                   name="filterDecorativeImages" checked>
+                            <label class="form-check-label" for="filterDecorativeImages">
+                                <small><strong>Filter decorative/small images</strong></small>
+                            </label>
+                            <div class="form-text ms-4">
+                                <small>Skip very small images (< 100 bytes or < 32x32 pixels) such as logos, icons, and decorative elements.</small>
+                            </div>
+                        </div>
+                        
+                        <div class="alert alert-info mt-3 mb-0" role="alert">
+                            <small>
+                                <i class="bi bi-info-circle"></i> <strong>Tip:</strong> Uncheck these options if an image is being incorrectly 
+                                filtered. Check the application logs for detailed information about why specific images are being filtered.
+                            </small>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Submit Button -->
+                <div class="d-grid gap-2">
+                    <button type="submit" class="btn btn-primary btn-lg" id="submitBtn" disabled>
+                        <i class="bi bi-translate"></i> Start Translation
+                    </button>
+                    <small class="text-muted text-center" id="submitHelp">
+                        Please select files and target language(s) to continue
+                    </small>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Progress Section -->
+    <div id="progressSection" class="card mt-4" style="display: none;">
+        <div class="card-body">
+            <h5 class="card-title">Translation Progress</h5>
+            <div class="progress mb-3">
+                <div id="progressBar" class="progress-bar progress-bar-striped progress-bar-animated" 
+                     role="progressbar" style="width: 0%"></div>
+            </div>
+            <div id="statusText" class="text-center">Initializing...</div>
+            <div id="jobDetails" class="mt-3"></div>
+        </div>
+    </div>
+
+    <!-- Results Section -->
+    <div id="resultsSection" class="card mt-4" style="display: none;">
+        <div class="card-body">
+            <h5 class="card-title">Translation Results</h5>
+            <div id="resultsContent"></div>
+            <div class="mt-3">
+                <button class="btn btn-success" id="downloadAllBtn">
+                    <i class="bi bi-download"></i> Download All Files
+                </button>
+                <button class="btn btn-danger" id="cleanupBtn">
+                    <i class="bi bi-trash"></i> Delete Temporary Files
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        let currentJobId = null;
+        let statusCheckInterval = null;
+        let currentJobHasImageProcessing = false; // Track if current job used image processing
+        let supportedFileTypes = {
+            batch: [],
+            sync: [],
+            imageProcessingSupported: []
+        };
+
+        // Load supported file types configuration
+        async function loadSupportedFileTypes() {
+            try {
+                const response = await fetch('/Translation/GetSupportedFileTypes');
+                supportedFileTypes = await response.json();
+                console.log('Loaded supported file types:', supportedFileTypes);
+            } catch (error) {
+                console.error('Error loading supported file types:', error);
+                // Fallback defaults
+                supportedFileTypes = {
+                    batch: ['.pdf', '.docx', '.pptx', '.xlsx', '.txt', '.html', '.htm', '.rtf', '.odt', '.ods', '.odp'],
+                    sync: ['.pdf', '.docx', '.pptx', '.txt', '.html', '.htm'],
+                    imageProcessingSupported: ['.pdf', '.docx']
+                };
+            }
+        }
+
+        // Check if file is supported for current mode
+        function isFileSupportedForMode(fileName, isAsync) {
+            const extension = '.' + fileName.split('.').pop().toLowerCase();
+            const supportedExtensions = isAsync ? supportedFileTypes.batch : supportedFileTypes.sync;
+            return supportedExtensions.includes(extension);
+        }
+
+        // Check if file supports image processing
+        function supportsImageProcessing(fileName) {
+            const extension = '.' + fileName.split('.').pop().toLowerCase();
+            return supportedFileTypes.imageProcessingSupported.includes(extension);
+        }
+
+        // Update image processing checkbox availability
+        function updateImageProcessingAvailability() {
+            const isAsync = document.getElementById('asyncMode').checked;
+            const files = document.getElementById('fileInput').files;
+            const processImagesCheckbox = document.getElementById('processImages');
+            const imageProcessingWarning = document.getElementById('imageProcessingWarning');
+            const imageProcessingHelp = document.getElementById('imageProcessingHelp');
+            const imageFilteringOptions = document.getElementById('imageFilteringOptions');
+            
+            // Image processing only available in async mode
+            if (!isAsync) {
+                processImagesCheckbox.checked = false;
+                processImagesCheckbox.disabled = true;
+                imageProcessingWarning.style.display = 'block';
+                imageProcessingHelp.classList.add('text-muted');
+                imageFilteringOptions.style.display = 'none';
+                return;
+            }
+            
+            // Check if any files support image processing
+            let hasImageSupportFiles = false;
+            if (files.length > 0) {
+                hasImageSupportFiles = Array.from(files).some(f => supportsImageProcessing(f.name));
+            }
+            
+            if (hasImageSupportFiles) {
+                processImagesCheckbox.disabled = false;
+                imageProcessingWarning.style.display = 'none';
+                imageProcessingHelp.classList.remove('text-muted');
+                imageProcessingHelp.classList.add('text-info');
+                // Show filtering options if image processing is checked
+                imageFilteringOptions.style.display = processImagesCheckbox.checked ? 'block' : 'none';
+            } else {
+                processImagesCheckbox.checked = false;
+                processImagesCheckbox.disabled = true;
+                imageProcessingWarning.style.display = 'none';
+                imageProcessingHelp.classList.remove('text-info');
+                imageProcessingHelp.classList.add('text-muted');
+                imageFilteringOptions.style.display = 'none';
+            }
+        }
+        
+        // Toggle image filtering options when image processing checkbox changes
+        document.getElementById('processImages').addEventListener('change', function() {
+            const imageFilteringOptions = document.getElementById('imageFilteringOptions');
+            imageFilteringOptions.style.display = this.checked ? 'block' : 'none';
+        });
+
+        // Processing mode change handler
+        document.querySelectorAll('input[name="processingMode"]').forEach(radio => {
+            radio.addEventListener('change', function() {
+                updateImageProcessingAvailability();
+                validateFilesForMode();
+            });
+        });
+
+        // Validate files for selected mode
+        function validateFilesForMode() {
+            const files = document.getElementById('fileInput').files;
+            const isAsync = document.getElementById('asyncMode').checked;
+            const fileList = document.getElementById('fileList');
+            
+            if (files.length === 0) return;
+            
+            const ul = fileList.querySelector('ul');
+            if (!ul) return;
+            
+            const items = ul.querySelectorAll('li');
+            Array.from(files).forEach((file, index) => {
+                const li = items[index];
+                if (!li) return;
+                
+                const isSupported = isFileSupportedForMode(file.name, isAsync);
+                const extension = '.' + file.name.split('.').pop().toLowerCase();
+                const supportsImages = supportsImageProcessing(file.name);
+                
+                let badge = `<span class="badge bg-primary rounded-pill">${formatFileSize(file.size)}</span>`;
+                
+                if (!isSupported) {
+                    badge += ` <span class="badge bg-danger rounded-pill ms-1">Not supported in ${isAsync ? 'async' : 'sync'} mode</span>`;
+                    li.classList.add('list-group-item-danger');
+                } else {
+                    li.classList.remove('list-group-item-danger');
+                    if (supportsImages && isAsync) {
+                        badge += ` <span class="badge bg-info rounded-pill ms-1" title="Supports image processing">IMG</span>`;
+                    }
+                }
+                
+                const badgeDiv = li.querySelector('div');
+                if (badgeDiv) {
+                    badgeDiv.innerHTML = badge;
+                }
+            });
+        }
+
+        // Auto-detect checkbox handler
+        document.getElementById('autoDetect').addEventListener('change', function() {
+            document.getElementById('sourceLanguage').disabled = this.checked;
+        });
+
+        // File input handler
+        document.getElementById('fileInput').addEventListener('change', function() {
+            const fileList = document.getElementById('fileList');
+            fileList.innerHTML = '';
+            
+            if (this.files.length > 0) {
+                const ul = document.createElement('ul');
+                ul.className = 'list-group';
+                
+                const isAsync = document.getElementById('asyncMode').checked;
+                
+                Array.from(this.files).forEach(file => {
+                    const li = document.createElement('li');
+                    li.className = 'list-group-item d-flex justify-content-between align-items-center';
+                    
+                    const extension = '.' + file.name.split('.').pop().toLowerCase();
+                    const isSupported = isFileSupportedForMode(file.name, isAsync);
+                    const supportsImages = supportsImageProcessing(file.name);
+                    
+                    let badge = `<span class="badge bg-primary rounded-pill">${formatFileSize(file.size)}</span>`;
+                    
+                    if (!isSupported) {
+                        badge += ` <span class="badge bg-danger rounded-pill ms-1">Not supported in ${isAsync ? 'async' : 'sync'} mode</span>`;
+                        li.classList.add('list-group-item-danger');
+                    } else if (supportsImages && isAsync) {
+                        badge += ` <span class="badge bg-info rounded-pill ms-1" title="Supports image processing">IMG</span>`;
+                    }
+                    
+                    li.innerHTML = `
+                        ${file.name}
+                        <div>${badge}</div>
+                    `;
+                    ul.appendChild(li);
+                });
+                
+                fileList.appendChild(ul);
+
+                // Force async if multiple files
+                if (this.files.length > 1) {
+                    document.getElementById('asyncMode').checked = true;
+                    document.getElementById('syncMode').disabled = true;
+                } else {
+                    document.getElementById('syncMode').disabled = false;
+                }
+                
+                updateImageProcessingAvailability();
+            }
+
+            // Check if submit button should be enabled
+            validateForm();
+        });
+
+        // Load supported languages on page load
+        window.addEventListener('DOMContentLoaded', async function() {
+            // Load file types first
+            await loadSupportedFileTypes();
+            
+            try {
+                const response = await fetch('/Translation/GetSupportedLanguages');
+                const languages = await response.json();
+
+                const targetLangContainer = document.getElementById('targetLanguages');
+                targetLangContainer.innerHTML = '';
+
+                // Create language checkboxes
+                languages.forEach(lang => {
+                    const div = document.createElement('div');
+                    div.className = 'form-check';
+                    div.innerHTML = `
+                        <input class="form-check-input target-lang" type="checkbox" 
+                               id="lang_${lang.code}" value="${lang.code}">
+                        <label class="form-check-label" for="lang_${lang.code}">
+                            ${lang.name} (${lang.nativeName})
+                        </label>
+                    `;
+                    targetLangContainer.appendChild(div);
+                });
+
+                // Wire up validation to newly created checkboxes
+                document.querySelectorAll('.target-lang').forEach(checkbox => {
+                    checkbox.addEventListener('change', validateForm);
+                });
+
+                // Initial validation check
+                validateForm();
+                updateImageProcessingAvailability();
+            } catch (error) {
+                console.error('Error loading languages:', error);
+                document.getElementById('targetLanguages').innerHTML = 
+                    '<div class="alert alert-danger">Error loading languages. Please refresh the page.</div>';
+            }
+        });
+
+        // Function to validate form and enable/disable submit button
+        function validateForm() {
+            const files = document.getElementById('fileInput').files;
+            const targetLangs = Array.from(document.querySelectorAll('.target-lang:checked'));
+            const submitBtn = document.getElementById('submitBtn');
+            const submitHelp = document.getElementById('submitHelp');
+            const isAsync = document.getElementById('asyncMode').checked;
+            
+            const hasFiles = files.length > 0;
+            const hasTargetLanguages = targetLangs.length > 0;
+            
+            // Check if all files are supported for current mode
+            let allFilesSupported = true;
+            let unsupportedFiles = [];
+            if (hasFiles) {
+                Array.from(files).forEach(file => {
+                    if (!isFileSupportedForMode(file.name, isAsync)) {
+                        allFilesSupported = false;
+                        unsupportedFiles.push(file.name);
+                    }
+                });
+            }
+            
+            if (hasFiles && hasTargetLanguages && allFilesSupported) {
+                submitBtn.disabled = false;
+                submitBtn.classList.remove('btn-secondary');
+                submitBtn.classList.add('btn-primary');
+                submitHelp.textContent = `Ready to translate ${files.length} file(s) to ${targetLangs.length} language(s)`;
+                submitHelp.classList.remove('text-muted', 'text-danger');
+                submitHelp.classList.add('text-success');
+            } else {
+                submitBtn.disabled = true;
+                submitBtn.classList.remove('btn-primary');
+                submitBtn.classList.add('btn-secondary');
+                
+                if (!hasFiles && !hasTargetLanguages) {
+                    submitHelp.textContent = 'Please select files and target language(s) to continue';
+                    submitHelp.classList.remove('text-success', 'text-danger');
+                    submitHelp.classList.add('text-muted');
+                } else if (!hasFiles) {
+                    submitHelp.textContent = 'Please select files to translate';
+                    submitHelp.classList.remove('text-success', 'text-danger');
+                    submitHelp.classList.add('text-muted');
+                } else if (!hasTargetLanguages) {
+                    submitHelp.textContent = 'Please select at least one target language';
+                    submitHelp.classList.remove('text-success', 'text-danger');
+                    submitHelp.classList.add('text-muted');
+                } else if (!allFilesSupported) {
+                    const mode = isAsync ? 'async' : 'sync';
+                    submitHelp.textContent = `Some files are not supported for ${mode} mode: ${unsupportedFiles.join(', ')}`;
+                    submitHelp.classList.remove('text-success', 'text-muted');
+                    submitHelp.classList.add('text-danger');
+                }
+            }
+        }
+
+        // Form submission
+        document.getElementById('translationForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+
+            const files = document.getElementById('fileInput').files;
+            const targetLangs = Array.from(document.querySelectorAll('.target-lang:checked')).map(cb => cb.value);
+            
+            if (files.length === 0) {
+                alert('Please select at least one file');
+                return;
+            }
+
+            if (targetLangs.length === 0) {
+                alert('Please select at least one target language');
+                return;
+            }
+
+            const formData = new FormData();
+            Array.from(files).forEach(file => formData.append('files', file));
+            
+            const autoDetect = document.getElementById('autoDetect').checked;
+            formData.append('autoDetectLanguage', autoDetect);
+            
+            if (!autoDetect) {
+                formData.append('sourceLanguage', document.getElementById('sourceLanguage').value);
+            }
+            
+            targetLangs.forEach(lang => formData.append('targetLanguages', lang));
+            
+            const useAsync = document.getElementById('asyncMode').checked;
+            formData.append('useAsyncProcessing', useAsync);
+
+            const processImages = document.getElementById('processImages').checked;
+            formData.append('processImages', processImages);
+            
+            // Add image filtering options if image processing is enabled
+            if (processImages) {
+                const filterTextImages = document.getElementById('filterImagesWithContainedText').checked;
+                const filterDecorativeImages = document.getElementById('filterDecorativeImages').checked;
+                formData.append('filterImagesWithContainedText', filterTextImages);
+                formData.append('filterDecorativeImages', filterDecorativeImages);
+            }
+
+            // Store this for later use during downloads
+            currentJobHasImageProcessing = processImages;
+
+            // Show progress section
+            document.getElementById('progressSection').style.display = 'block';
+            document.getElementById('resultsSection').style.display = 'none';
+            document.getElementById('submitBtn').disabled = true;
+
+            try {
+                const response = await fetch('/Translation/Translate', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const result = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(result.error || 'Translation failed');
+                }
+
+                currentJobId = result.jobId;
+                
+                console.log('Translation response:', result);  // Debug logging
+
+                // Check status FIRST before checking isAsync
+                // Backend can return either "Succeeded" (sync) or "Completed" (async when done)
+                if (result.status === 'Completed' || result.status === 'Succeeded') {
+                    // Translation already completed - display results immediately
+                    console.log('Translation completed, showing results immediately');
+                    displaySyncResults(result);
+                } else if (result.status === 'InProgress' || result.status === 'Running') {
+                    // Translation still in progress - start polling
+                    console.log('Translation in progress, starting status polling');
+                    console.log('Initial phase:', result.currentPhase);
+                    startStatusPolling(result.jobId, result.currentPhase);
+                } else if (result.status === 'Failed' || result.status === 'Error') {
+                    // Translation failed
+                    throw new Error(result.errorMessage || 'Translation failed');
+                } else {
+                    // Unknown status - show error
+                    console.warn('Unknown translation status:', result.status);
+                    throw new Error(`Unexpected status: ${result.status}`);
+                }
+            } catch (error) {
+                alert('Error: ' + error.message);
+                document.getElementById('progressSection').style.display = 'none';
+                document.getElementById('submitBtn').disabled = false;
+            }
+        });
+
+        function displaySyncResults(result) {
+            document.getElementById('progressSection').style.display = 'none';
+            document.getElementById('resultsSection').style.display = 'block';
+            document.getElementById('submitBtn').disabled = false;
+
+            const resultsContent = document.getElementById('resultsContent');
+            
+            if (!result.translatedFiles || result.translatedFiles.length === 0) {
+                resultsContent.innerHTML = '<div class="alert alert-warning">No translated files found</div>';
+                return;
+            }
+
+            let html = '<div class="alert alert-success mb-3">';
+            html += '<i class="bi bi-check-circle"></i> <strong>Translation completed successfully!</strong>';
+            html += '</div>';
+            
+            html += '<div class="table-responsive"><table class="table table-striped">';
+            html += '<thead><tr><th>Original File</th><th>Language</th><th>Actions</th></tr></thead><tbody>';
+
+            result.translatedFiles.forEach(file => {
+                html += `
+                    <tr>
+                        <td>${file.originalFileName}</td>
+                        <td><span class="badge bg-info">${file.targetLanguageName || file.targetLanguage}</span></td>
+                        <td>
+                            <button class="btn btn-sm btn-primary" onclick="downloadFile('${file.translatedBlobUrl}')">
+                                <i class="bi bi-download"></i> Download
+                            </button>
+                        </td>
+                    </tr>
+                `;
+            });
+
+            html += '</tbody></table></div>';
+            resultsContent.innerHTML = html;
+        }
+
+        function getPhaseMessage(phase) {
+            // Convert phase name to user-friendly message
+            switch (phase) {
+                case 'Initializing':
+                    return 'Initializing translation job...';
+                case 'Uploading Files':
+                    return 'Uploading files to storage...';
+                case 'Extracting Images':
+                    return 'Extracting images from documents...';
+                case 'Starting Translation':
+                case 'Starting':
+                    return 'Starting document translation...';
+                case 'Translating Documents':
+                case 'Translating':
+                    return 'Translating documents...';
+                case 'Replacing Images':
+                    return 'Replacing translated images in documents...';
+                case 'Processing':
+                    return 'Processing documents...';
+                default:
+                    return phase + '...';
+            }
+        }
+
+        function startStatusPolling(jobId, initialPhase) {
+            // Show the initial phase from the server response
+            const initialMessage = getPhaseMessage(initialPhase || 'Initializing');
+            updateStatus(initialMessage, 'primary');
+            
+            statusCheckInterval = setInterval(async () => {
+                try {
+                    const response = await fetch(`/Translation/GetStatus?jobId=${jobId}`);
+                    const status = await response.json();
+
+                    updateJobProgress(status);
+
+                    // Stop polling when translation is complete
+                    // Check for: 1) Status is Succeeded/Completed, OR 2) All documents done (100%)
+                    const statusComplete = (status.status === 'Succeeded' || status.status === 'Completed');
+                    const allDocsDone = (status.totalDocuments > 0 && status.translatedDocuments === status.totalDocuments);
+                    const phaseComplete = (status.currentPhase === 'Completed');
+                    
+                    // Translation is fully complete if status says so, or if all docs are translated
+                    const isFullyComplete = statusComplete || allDocsDone || phaseComplete;
+                    
+                    if (isFullyComplete) {
+                        console.log('Translation complete detected:', { statusComplete, allDocsDone, phaseComplete });
+                        clearInterval(statusCheckInterval);
+                        statusCheckInterval = null; // Prevent any future polling
+                        await loadTranslatedFiles(jobId);
+                    } else if (status.status === 'Failed' || status.status === 'Error') {
+                        clearInterval(statusCheckInterval);
+                        statusCheckInterval = null;
+                        updateStatus('Translation failed: ' + status.errorMessage, 'danger');
+                        document.getElementById('submitBtn').disabled = false;
+                    }
+                    // Otherwise, keep polling (still in progress)
+                } catch (error) {
+                    console.error('Error checking status:', error);
+                }
+            }, 5000); // Check every 5 seconds
+        }
+
+        function updateJobProgress(status) {
+            const total = status.totalDocuments;
+            const completed = status.translatedDocuments;
+            const failed = status.failedDocuments;
+            const inProgress = status.documentsInProgress || 0;
+            const notStarted = status.documentsNotStarted || 0;
+            
+            const percentage = status.percentComplete || (total > 0 ? Math.round((completed / total) * 100) : 0);
+            
+            // Update progress bar
+            const progressBar = document.getElementById('progressBar');
+            progressBar.style.width = percentage + '%';
+            progressBar.textContent = percentage + '%';
+            
+            // Update progress bar color based on status and phase
+            progressBar.className = 'progress-bar progress-bar-striped';
+            const currentPhase = status.currentPhase || status.status;
+            
+            // Only show green/success when FULLY completed (including image processing)
+            if (currentPhase === 'Completed') {
+                progressBar.classList.add('bg-success');
+                progressBar.classList.remove('progress-bar-animated');
+            } else if (status.status === 'Failed' || status.status === 'ValidationFailed') {
+                progressBar.classList.add('bg-danger');
+                progressBar.classList.remove('progress-bar-animated');
+            } else if (currentPhase === 'Replacing Images') {
+                // Show warning color for image processing
+                progressBar.classList.add('bg-warning');
+                progressBar.classList.add('progress-bar-animated');
+            } else {
+                // Still in progress
+                progressBar.classList.add('progress-bar-animated');
+            }
+            
+            // Use detailedStatus from backend, with fallback to basic message
+            // Backend returns PascalCase which gets converted to camelCase by JSON serializer
+            let statusMessage = status.detailedStatus || buildBasicStatusMessage(status);
+            
+            // Determine alert type based on current phase
+            let alertType = 'info';
+            
+            if (currentPhase === 'Completed') {
+                alertType = 'success';
+            } else if (currentPhase === 'Failed' || currentPhase === 'Validation Failed') {
+                alertType = 'danger';
+            } else if (currentPhase === 'Initializing' || currentPhase === 'Starting' || currentPhase === 'Uploading Files') {
+                alertType = 'primary';
+            } else if (currentPhase === 'Translating' || currentPhase === 'Processing' || currentPhase === 'Translating Documents') {
+                alertType = 'info';
+            } else if (currentPhase === 'Extracting Images' || currentPhase === 'Replacing Images') {
+                alertType = 'warning';
+            }
+            
+            updateStatus(statusMessage, alertType);
+            
+            // Build detailed job information
+            const details = buildJobDetails(status);
+            document.getElementById('jobDetails').innerHTML = details;
+        }
+
+        function buildBasicStatusMessage(status) {
+            const completed = status.translatedDocuments;
+            const total = status.totalDocuments;
+            const inProgress = status.documentsInProgress || 0;
+            const notStarted = status.documentsNotStarted || 0;
+            const failed = status.failedDocuments || 0;
+            const currentPhase = status.currentPhase || status.status;
+            
+            // Build a detailed message based on phase
+            let message = '';
+            
+            switch (currentPhase) {
+                case 'Initializing':
+                    message = 'Initializing translation job...';
+                    break;
+                case 'Starting':
+                    message = 'Starting document translation...';
+                    break;
+                case 'Uploading Files':
+                    message = 'Uploading files and extracting images...';
+                    break;
+                case 'Extracting Images':
+                    message = 'Extracting images from documents...';
+                    break;
+                case 'Translating Documents':
+                    message = `Translating documents... (${completed}/${total} completed)`;
+                    if (inProgress > 0) message += `\n   In Progress: ${inProgress}`;
+                    if (notStarted > 0) message += `\n   Pending: ${notStarted}`;
+                    break;
+                case 'Translating':
+                    message = `Translating documents... (${completed}/${total} completed)`;
+                    if (inProgress > 0) message += `\n   In Progress: ${inProgress}`;
+                    if (notStarted > 0) message += `\n   Pending: ${notStarted}`;
+                    break;
+                case 'Processing':
+                    message = `Processing documents... (${completed}/${total} completed)`;
+                    if (inProgress > 0) message += `\n   In Progress: ${inProgress}`;
+                    if (notStarted > 0) message += `\n   Pending: ${notStarted}`;
+                    break;
+                case 'Replacing Images':
+                    message = 'Replacing translated images in documents...';
+                    break;
+                case 'Completed':
+                    message = `Translation completed successfully! All ${total} document(s) translated.`;
+                    break;
+                case 'Failed':
+                    message = `Translation failed. ${failed} document(s) failed.`;
+                    break;
+                case 'Cancelled':
+                    message = 'Translation job was cancelled.';
+                    break;
+                case 'Validation Failed':
+                    message = 'Validation failed. Check permissions and configuration.';
+                    break;
+                default:
+                    message = `${currentPhase}: ${completed}/${total} documents completed`;
+            }
+            
+            return message;
+        }
+
+        function buildJobDetails(status) {
+            let html = '<div class="card">';
+            html += '<div class="card-body">';
+            
+            // Job header
+            html += '<div class="d-flex justify-content-between align-items-center mb-3">';
+            html += `<h6 class="mb-0">Job ID: <code class="text-muted small">${status.jobId}</code></h6>`;
+            // Use currentPhase with fallback to status
+            const displayPhase = status.currentPhase || status.status;
+            html += `<span class="badge ${getStatusBadgeClass(status.status)}">${displayPhase}</span>`;
+            html += '</div>';
+            
+            // Progress summary
+            html += '<div class="row text-center mb-3">';
+            html += '<div class="col">';
+            html += `<div class="h4 mb-0">${status.translatedDocuments}</div>`;
+            html += '<small class="text-success">Completed</small>';
+            html += '</div>';
+            
+            if (status.documentsInProgress > 0) {
+                html += '<div class="col">';
+                html += `<div class="h4 mb-0">${status.documentsInProgress}</div>`;
+                html += '<small class="text-primary">In Progress</small>';
+                html += '</div>';
+            }
+            
+            if (status.documentsNotStarted > 0) {
+                html += '<div class="col">';
+                html += `<div class="h4 mb-0">${status.documentsNotStarted}</div>`;
+                html += '<small class="text-secondary">Pending</small>';
+                html += '</div>';
+            }
+            
+            if (status.failedDocuments > 0) {
+                html += '<div class="col">';
+                html += `<div class="h4 mb-0">${status.failedDocuments}</div>`;
+                html += '<small class="text-danger">Failed</small>';
+                html += '</div>';
+            }
+            
+            html += '<div class="col">';
+            html += `<div class="h4 mb-0">${status.totalDocuments}</div>`;
+            html += '<small class="text-muted">Total</small>';
+            html += '</div>';
+            html += '</div>';
+            
+            // Timestamps
+            if (status.createdOn || status.elapsedTime) {
+                html += '<hr class="my-2">';
+                html += '<div class="small text-muted">';
+                
+                if (status.createdOn) {
+                    const createdDate = new Date(status.createdOn);
+                    html += `<div>Started: ${createdDate.toLocaleString()}</div>`;
+                }
+                
+                if (status.elapsedTime) {
+                    html += `<div>Duration: ${formatDuration(status.elapsedTime)}</div>`;
+                }
+                
+                if (status.lastModified) {
+                    const modifiedDate = new Date(status.lastModified);
+                    html += `<div>Last Updated: ${modifiedDate.toLocaleString()}</div>`;
+                }
+                
+                html += '</div>';
+            }
+            
+            html += '</div>';
+            html += '</div>';
+            
+            return html;
+        }
+
+        function getStatusBadgeClass(status) {
+            switch (status) {
+                case 'Succeeded':
+                case 'Completed':
+                    return 'bg-success';
+                case 'Failed':
+                case 'ValidationFailed':
+                    return 'bg-danger';
+                case 'Cancelled':
+                    return 'bg-warning';
+                case 'Running':
+                case 'NotStarted':
+                    return 'bg-primary';
+                default:
+                    return 'bg-secondary';
+            }
+        }
+
+        function formatDuration(duration) {
+            // Duration comes as TimeSpan format like "00:02:35.1234567"
+            if (typeof duration === 'string') {
+                const parts = duration.split(':');
+                if (parts.length >= 3) {
+                    const hours = parseInt(parts[0]);
+                    const minutes = parseInt(parts[1]);
+                    const seconds = parseInt(parts[2].split('.')[0]);
+                    
+                    if (hours > 0) {
+                        return `${hours}h ${minutes}m ${seconds}s`;
+                    } else if (minutes > 0) {
+                        return `${minutes}m ${seconds}s`;
+                    } else {
+                        return `${seconds}s`;
+                    }
+                }
+            }
+            return duration;
+        }
+
+        function updateStatus(text, type = 'info') {
+            const statusText = document.getElementById('statusText');
+            
+            // Convert line breaks to HTML and preserve emoji formatting
+            const formattedText = text.replace(/\n/g, '<br>');
+            
+            statusText.innerHTML = formattedText;
+            statusText.className = `alert alert-${type}`;
+            
+            // Remove text-center if we have multi-line content for better readability
+            if (text.includes('\n')) {
+                statusText.classList.remove('text-center');
+                statusText.classList.add('text-start');
+            } else {
+                statusText.classList.add('text-center');
+                statusText.classList.remove('text-start');
+            }
+        }
+
+        async function loadTranslatedFiles(jobId) {
+            try {
+                const response = await fetch(`/Translation/GetTranslatedFiles?jobId=${jobId}`);
+                const files = await response.json();
+
+                displayTranslatedFiles(files);
+            } catch (error) {
+                console.error('Error loading translated files:', error);
+                updateStatus('Error loading results', 'danger');
+            }
+        }
+
+        function displayTranslatedFiles(files) {
+            document.getElementById('progressSection').style.display = 'none';
+            document.getElementById('resultsSection').style.display = 'block';
+            document.getElementById('submitBtn').disabled = false;
+
+            const resultsContent = document.getElementById('resultsContent');
+            
+            if (files.length === 0) {
+                resultsContent.innerHTML = '<div class="alert alert-warning">No translated files found</div>';
+                return;
+            }
+
+            let html = '<div class="table-responsive"><table class="table table-striped">';
+            html += '<thead><tr><th>File Name</th><th>Language</th><th>Actions</th></tr></thead><tbody>';
+
+            files.forEach(file => {
+                html += `
+                    <tr>
+                        <td>${file.name}</td>
+                        <td><span class="badge bg-info">${file.languageName || file.language}</span></td>
+                        <td>
+                            <button class="btn btn-sm btn-primary" onclick="downloadFile('${file.path}')">
+                                <i class="bi bi-download"></i> Download
+                            </button>
+                        </td>
+                    </tr>
+                `;
+            });
+
+            html += '</tbody></table></div>';
+            resultsContent.innerHTML = html;
+        }
+
+        async function downloadFile(blobPath) {
+            try {
+                console.log('Downloading file from:', blobPath);
+                
+                const response = await fetch('/Translation/DownloadFile', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ 
+                        blobPath: blobPath,
+                        applyImageReplacement: currentJobHasImageProcessing, // Only apply if job had image processing
+                        jobId: currentJobId
+                    })
+                });
+
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.error || 'Download failed');
+                }
+
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = blobPath.split('/').pop();
+                document.body.appendChild(a);
+                a.click();
+                window.URL.revokeObjectURL(url);
+                document.body.removeChild(a);
+                
+                console.log('File downloaded successfully');
+            } catch (error) {
+                console.error('Error downloading file:', error);
+                alert('Error downloading file: ' + error.message);
+            }
+        }
+
+        document.getElementById('cleanupBtn').addEventListener('click', async function() {
+            if (!currentJobId) return;
+
+            if (!confirm('Are you sure you want to delete all temporary files? This cannot be undone.')) {
+                return;
+            }
+
+            try {
+                const response = await fetch('/Translation/CleanupJob', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ jobId: currentJobId })
+                });
+
+                if (response.ok) {
+                    alert('Cleanup completed successfully');
+                    document.getElementById('resultsSection').style.display = 'none';
+                    document.getElementById('translationForm').reset();
+                    document.getElementById('fileList').innerHTML = '';
+                    currentJobId = null;
+                    currentJobHasImageProcessing = false; // Reset image processing flag
+                } else {
+                    throw new Error('Cleanup failed');
+                }
+            } catch (error) {
+                alert('Error during cleanup: ' + error.message);
+            }
+        });
+
+        // Download All Files button handler
+        document.getElementById('downloadAllBtn').addEventListener('click', async function() {
+            const downloadButtons = document.querySelectorAll('#resultsContent button[onclick^="downloadFile"]');
+            
+            if (downloadButtons.length === 0) {
+                alert('No files available to download');
+                return;
+            }
+
+            const originalText = this.innerHTML;
+            const originalDisabled = this.disabled;
+            
+            try {
+                this.disabled = true;
+                this.innerHTML = '<i class="bi bi-hourglass-split"></i> Downloading...';
+                
+                let downloadedCount = 0;
+                
+                // Download each file with a small delay between downloads
+                for (let i = 0; i < downloadButtons.length; i++) {
+                    const button = downloadButtons[i];
+                    const onclickAttr = button.getAttribute('onclick');
+                    const blobPathMatch = onclickAttr.match(/downloadFile\('([^']+)'\)/);
+                    
+                    if (blobPathMatch && blobPathMatch[1]) {
+                        const blobPath = blobPathMatch[1];
+                        
+                        try {
+                            await downloadFile(blobPath);
+                            downloadedCount++;
+                            
+                            // Update button text with progress
+                            this.innerHTML = `<i class="bi bi-hourglass-split"></i> Downloading... (${downloadedCount}/${downloadButtons.length})`;
+                            
+                            // Small delay between downloads to avoid overwhelming the browser
+                            if (i < downloadButtons.length - 1) {
+                                await new Promise(resolve => setTimeout(resolve, 500));
+                            }
+                        } catch (error) {
+                            console.error(`Failed to download ${blobPath}:`, error);
+                            // Continue with other files even if one fails
+                        }
+                    }
+                }
+                
+                alert(`Successfully downloaded ${downloadedCount} of ${downloadButtons.length} files`);
+            } catch (error) {
+                console.error('Error during bulk download:', error);
+                alert('Error downloading files: ' + error.message);
+            } finally {
+                this.innerHTML = originalText;
+                this.disabled = originalDisabled;
+            }
+        });
+
+        // Helper function to format file size
+        function formatFileSize(bytes) {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
+        }
+
+        // Cleanup on page unload
+        window.addEventListener('beforeunload', function() {
+            if (statusCheckInterval) {
+                clearInterval(statusCheckInterval);
+            }
+        });
+    </script>
+
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
+}
+
+<style>
+    .language-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+        gap: 10px;
+        max-height: 400px;
+        overflow-y: auto;
+        padding: 15px;
+        border: 1px solid #dee2e6;
+        border-radius: 5px;
+        background-color: #f8f9fa;
+    }
+
+    .progress-container {
+        margin-top: 20px;
+    }
+
+    .file-result {
+        margin-bottom: 10px;
+        padding: 10px;
+        border: 1px solid #dee2e6;
+        border-radius: 5px;
+    }
+
+    .spinner-border-sm {
+        width: 1rem;
+        height: 1rem;
+    }
+
+    #submitBtn:disabled {
+        cursor: not-allowed;
+        opacity: 0.5;
+    }
+
+    #submitHelp {
+        font-size: 0.875rem;
+        margin-top: 0.5rem;
+        display: block;
+    }
+
+    #statusText {
+        font-size: 0.95rem;
+        line-height: 1.6;
+        padding: 1rem;
+        margin: 0;
+    }
+
+    #statusText code {
+        background-color: rgba(0, 0, 0, 0.05);
+        padding: 2px 6px;
+        border-radius: 3px;
+        font-size: 0.9em;
+    }
+
+    #jobDetails .card {
+        border: 1px solid #e3e6f0;
+        box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+    }
+
+    #jobDetails .card-body {
+        padding: 1rem;
+    }
+
+    #jobDetails .badge {
+        font-size: 0.85rem;
+        padding: 0.4em 0.8em;
+    }
+
+    #jobDetails .h4 {
+        font-weight: 600;
+        color: #2c3e50;
+    }
+
+    #jobDetails hr {
+        opacity: 0.1;
+    }
+
+    .progress {
+        height: 2rem;
+        font-size: 1rem;
+        font-weight: 600;
+    }
+
+    .progress-bar {
+        transition: width 0.6s ease;
+    }
+</style>

@@ -1,0 +1,19 @@
+version: '3.8'
+
+services:
+  web:
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_URLS=https://+:443;http://+:80
+      - ASPNETCORE_Kestrel__Certificates__Default__Password=password
+      - ASPNETCORE_Kestrel__Certificates__Default__Path=/https/aspnetapp.pfx
+    ports:
+      - "7051:443"
+      - "5055:80"
+    volumes:
+      - ${APPDATA}/Microsoft/UserSecrets:/root/.microsoft/usersecrets:ro
+      - ${APPDATA}/ASP.NET/Https:/https:ro
+    restart: "no"  # Don't restart on exit - important for debugging
+    
+  pdf-service:
+    restart: "no"  # Don't restart on exit - important for debugging

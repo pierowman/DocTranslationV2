@@ -1,0 +1,47 @@
+﻿<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UserSecretsId>062188b3-fd03-4bf4-8ead-509823a1ffed</UserSecretsId>
+    <DockerDefaultTargetOS>Windows</DockerDefaultTargetOS>
+    <DockerfileFile>Dockerfile.windows</DockerfileFile>
+    <!-- Enable System.Drawing on Windows for native GDI+ support -->
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <!-- 
+      Suppress NU1902: CVE-2025-65955 in Magick.NET-Q16-AnyCPU 14.9.1
+      
+      Rationale for suppression:
+      - Vulnerability only affects Magick++ C++ API Options::fontFamily() method
+      - This project uses Magick.NET C# wrapper for EMF/WMF to PNG conversion only
+      - We never call fontFamily() methods in our code (see ImageExtractionService.ConvertEmfWmfToPng)
+      - Attack vector is LOCAL with HIGH complexity (CVSS: 4.9 - Moderate)
+      - No patched version available yet (as of 2025-12-03)
+      
+      GitHub Advisory: https://github.com/advisories/GHSA-q3hc-j9x5-mp9m
+      
+      Action: Monitor for Magick.NET updates and remove suppression when patched version available
+      
+      Note: On Windows, we prefer System.Drawing.Common for EMF/WMF (native GDI+)
+            Magick.NET is kept as fallback for Linux containers
+    -->
+    <NoWarn>$(NoWarn);NU1902</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Azure.AI.Translation.Document" Version="2.0.0" />
+    <PackageReference Include="Azure.Identity" Version="1.17.0" />
+    <PackageReference Include="Azure.Storage.Blobs" Version="12.26.0" />
+    <PackageReference Include="Docnet.Core" Version="2.6.0" />
+    <PackageReference Include="DocumentFormat.OpenXml" Version="3.3.0" />
+    <PackageReference Include="itext.bouncy-castle-adapter" Version="9.4.0" />
+    <PackageReference Include="itext7" Version="9.4.0" />
+    <PackageReference Include="Magick.NET-Q16-AnyCPU" Version="14.9.1" />
+    <PackageReference Include="Microsoft.ApplicationInsights.AspNetCore" Version="2.23.0" />
+    <PackageReference Include="Microsoft.VisualStudio.Azure.Containers.Tools.Targets" Version="1.22.1" />
+    <PackageReference Include="SixLabors.ImageSharp" Version="3.1.12" />
+    <PackageReference Include="System.Drawing.Common" Version="9.0.0" />
+  </ItemGroup>
+
+</Project>

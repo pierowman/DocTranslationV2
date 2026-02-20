@@ -1,0 +1,42 @@
+version: '3.8'
+
+services:
+  # .NET Web Application
+  web:
+    build:
+      context: ./DocTranslationV2
+      dockerfile: Dockerfile
+    ports:
+      - "5001:80"
+      - "5002:443"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - PythonPdfService__Enabled=true
+      - PythonPdfService__Url=http://pdf-service:5000
+      - PythonPdfService__TimeoutSeconds=120
+    depends_on:
+      - pdf-service
+    networks:
+      - app-network
+
+  # Python PDF Image Replacement Service
+  pdf-service:
+    build:
+      context: ./PythonPdfService
+      dockerfile: Dockerfile
+    ports:
+      - "5000:5000"
+    environment:
+      - FLASK_ENV=production
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+networks:
+  app-network:
+    driver: bridge

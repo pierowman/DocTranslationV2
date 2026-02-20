@@ -1,0 +1,77 @@
+# Linux Container Dockerfile - BACKUP/COST-OPTIMIZED OPTION
+#
+# This provides cost-effective deployment with EMF/WMF white placeholder fallback
+# Primary deployment uses Dockerfile (Windows) for perfect Visio diagram support
+#
+# Trade-offs:
+# ? 3x cheaper than Windows ($50-70/month vs $150-200)
+# ? Universal cloud support (any Kubernetes, any platform)
+# ? Smaller image size (~200MB vs 5GB+)
+# ? Faster builds (2-5 min vs 10-20 min)
+# ?? Visio diagrams (EMF/WMF) ? white placeholders
+#
+# To use this instead of Windows:
+# 1. Change DockerDefaultTargetOS to "Linux" in .csproj
+# 2. Remove DockerfileFile property from .csproj
+# 3. Copy this file to Dockerfile
+#
+# See CONTAINER_PLATFORM_COMPARISON.md for detailed analysis
+
+# Use Ubuntu-based .NET runtime for better library support (including ImageMagick with all delegates)
+FROM mcr.microsoft.com/dotnet/aspnet:9.0-noble AS base
+
+# Install ImageMagick with FULL delegate support
+USER root
+
+# Install ImageMagick from Ubuntu repos (includes all delegates by default)
+RUN apt-get update && apt-get install -y \
+    imagemagick \
+    libmagickcore-6.q16-6-extra \
+    libwmf-0.2-7 \
+    ghostscript \
+    && rm -rf /var/lib/apt/lists/*
+
+# Update ImageMagick policy to allow all formats
+RUN if [ -f /etc/ImageMagick-6/policy.xml ]; then \
+        # Remove restrictive policies for common formats
+        sed -i '/<policy domain="coder" rights="none" pattern="PS" \/>/d' /etc/ImageMagick-6/policy.xml && \
+        sed -i '/<policy domain="coder" rights="none" pattern="EPS" \/>/d' /etc/ImageMagick-6/policy.xml && \
+        sed -i '/<policy domain="coder" rights="none" pattern="PDF" \/>/d' /etc/ImageMagick-6/policy.xml && \
+        sed -i '/<policy domain="coder" rights="none" pattern="XPS" \/>/d' /etc/ImageMagick-6/policy.xml && \
+        sed -i '/<policy domain="coder" rights="none" pattern="WMF" \/>/d' /etc/ImageMagick-6/policy.xml && \
+        sed -i '/<policy domain="coder" rights="none" pattern="EMF" \/>/d' /etc/ImageMagick-6/policy.xml; \
+    fi
+
+# Verify ImageMagick installation
+RUN echo "=== ImageMagick Configuration ===" && \
+    convert -version && \
+    echo "" && \
+    echo "=== Supported Formats ===" && \
+    convert -list format | grep -E "WMF|EMF|PNG|JPEG" || true && \
+    echo "=== Configuration Complete ==="
+
+USER $APP_UID
+WORKDIR /app
+EXPOSE 8080
+
+
+# Build stage
+FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build
+ARG BUILD_CONFIGURATION=Release
+WORKDIR /src
+COPY ["DocTranslationV2/DocTranslationV2.csproj", "DocTranslationV2/"]
+RUN dotnet restore "./DocTranslationV2/DocTranslationV2.csproj"
+COPY . .
+WORKDIR "/src/DocTranslationV2"
+RUN dotnet build "./DocTranslationV2.csproj" -c $BUILD_CONFIGURATION -o /app/build
+
+# Publish stage
+FROM build AS publish
+ARG BUILD_CONFIGURATION=Release
+RUN dotnet publish "./DocTranslationV2.csproj" -c $BUILD_CONFIGURATION -o /app/publish /p:UseAppHost=false
+
+# Final stage
+FROM base AS final
+WORKDIR /app
+COPY --from=publish /app/publish .
+ENTRYPOINT ["dotnet", "DocTranslationV2.dll"]
