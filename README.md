@@ -18,7 +18,7 @@ An ASP.NET Core (.NET 9) web application for translating documents using Azure A
 |--------|-------|------|-----------------|
 | .pdf | Yes | Yes | Yes |
 | .docx | Yes | Yes | Yes |
-| .pptx | Yes | Yes | No |
+| .pptx | Yes | Yes | Yes |
 | .xlsx | Yes | No | No |
 | .txt | Yes | Yes | No |
 | .html / .htm | Yes | Yes | No |
