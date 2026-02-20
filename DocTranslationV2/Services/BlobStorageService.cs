@@ -355,28 +355,14 @@ public class BlobStorageService : IBlobStorageService
             
             // Upload file to container root (no folder path)
             var blobClient = containerClient.GetBlobClient(fileName);
-            
-            // Check if blob already exists (might be from failed previous attempt)
-            var blobExists = await blobClient.ExistsAsync(cancellationToken);
-            if (blobExists.Value)
+
+            if (_logger.IsEnabled(Microsoft.Extensions.Logging.LogLevel.Debug))
             {
-                _logger.LogWarning("Blob {FileName} already exists in container {ContainerName}, will overwrite", fileName, containerName);
-                
-                // Get properties of existing blob to see if it's complete
-                try
+                var blobExists = await blobClient.ExistsAsync(cancellationToken);
+                if (blobExists.Value)
                 {
-                    var properties = await blobClient.GetPropertiesAsync(cancellationToken: cancellationToken);
-                    _logger.LogInformation("Existing blob size: {Size} bytes, ContentType: {ContentType}", 
-                        properties.Value.ContentLength, properties.Value.ContentType);
+                    _logger.LogWarning("Blob {FileName} already exists in container {ContainerName}, will overwrite atomically", fileName, containerName);
                 }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex, "Could not get properties of existing blob {FileName}, it may be corrupted", fileName);
-                }
-                
-                // Delete the existing blob to ensure clean upload
-                _logger.LogInformation("Deleting existing blob {FileName} before re-upload", fileName);
-                await blobClient.DeleteIfExistsAsync(cancellationToken: cancellationToken);
             }
             
             // Set content type based on file extension

@@ -634,7 +634,8 @@
                     // Stop polling when translation is complete
                     // Check for: 1) Status is Succeeded/Completed, OR 2) All documents done (100%)
                     const statusComplete = (status.status === 'Succeeded' || status.status === 'Completed');
-                    const allDocsDone = (status.totalDocuments > 0 && status.translatedDocuments === status.totalDocuments);
+                    const allDocsDone = !currentJobHasImageProcessing &&
+                        (status.totalDocuments > 0 && status.translatedDocuments === status.totalDocuments);
                     const phaseComplete = (status.currentPhase === 'Completed');
                     
                     // Translation is fully complete if status says so, or if all docs are translated

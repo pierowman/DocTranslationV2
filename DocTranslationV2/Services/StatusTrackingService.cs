@@ -306,7 +306,16 @@ public class StatusTrackingService : IStatusTrackingService
             return metadata.CurrentPhase;
         }
 
-        // For translation phase, derive from Azure status
+        // For translation phase, derive from Azure status.
+        // Guard against a race condition where Azure reports Succeeded before the background
+        // image-replacement task has had a chance to update the phase to ReplacingImages.
+        // Without this guard, DeterminePhaseFromAzureStatus would return Completed and the
+        // status would be cached as terminal before image replacement actually runs.
+        if (metadata.HasImageProcessing && aggregated.Status == TranslationStatus.Succeeded)
+        {
+            return JobPhases.ReplacingImages;
+        }
+
         return DeterminePhaseFromAzureStatus(aggregated);
     }
 
