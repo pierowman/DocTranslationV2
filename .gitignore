@@ -363,3 +363,6 @@ MigrationBackup/
 FodyWeavers.xsd
 # Local secrets - never commit real credentials
 appsettings.Development.json
+
+# Markdown documentation files
+*.md
