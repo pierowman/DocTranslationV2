@@ -366,3 +366,4 @@ appsettings.Development.json
 
 # Markdown documentation files
 *.md
+!README.md
